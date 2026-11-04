@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import UrlForm from './components/UrlForm.jsx';
 import MediaCard from './components/MediaCard.jsx';
+import JobList from './components/JobList.jsx';
 
 const PLATFORMS = ['YouTube', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook', 'Vimeo', 'Reddit', 'SoundCloud', '1000+ more'];
 
@@ -11,6 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [jobs, setJobs] = useState([]);
   const [server, setServer] = useState(null);
 
   useEffect(() => {
@@ -31,8 +33,18 @@ export default function App() {
     }
   }
 
-  function download(choice) {
-    // Browser handles the download natively (with its own progress UI)
+  async function download(choice) {
+    setError('');
+    if (server?.mode === 'jobs') {
+      try {
+        const job = await api.createJob({ url, choice: choice.id, title: `${info.title} · ${choice.label}` });
+        setJobs((j) => [{ ...job, thumbnail: info.thumbnail }, ...j]);
+      } catch (e) {
+        setError(e.message);
+      }
+      return;
+    }
+    // Direct mode: the browser handles the download natively (with its own progress UI)
     const a = document.createElement('a');
     a.href = api.downloadUrl(url, choice.id);
     a.rel = 'noopener';
@@ -42,6 +54,9 @@ export default function App() {
     setToast(`Preparing ${choice.label}… your download will start shortly.`);
     setTimeout(() => setToast(''), 5000);
   }
+
+  const updateJob = (id, patch) => setJobs((list) => list.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+  const removeJob = (id) => setJobs((list) => list.filter((j) => j.id !== id));
 
   return (
     <div className="app">
@@ -54,7 +69,7 @@ export default function App() {
         </div>
         <span className={`status ${server?.ok ? 'ok' : server ? 'bad' : ''}`} title={server?.error || ''}>
           <i />
-          {server ? (server.ok ? `Online · yt-dlp ${server.ytdlp}` : 'Server offline') : 'Connecting…'}
+          {server ? (server.ok ? `Online · ${server.mode === 'jobs' ? 'Full' : 'Lite'} · yt-dlp ${server.ytdlp}` : 'Server offline') : 'Connecting…'}
         </span>
       </header>
 
@@ -79,6 +94,7 @@ export default function App() {
         {loading && <div className="card skeleton" aria-busy="true" />}
         {info && <MediaCard info={info} onDownload={download} />}
 
+        <JobList jobs={jobs} onUpdate={updateJob} onRemove={removeJob} />
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
 

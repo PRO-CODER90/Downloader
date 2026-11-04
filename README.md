@@ -2,42 +2,58 @@
 
 A video and audio downloader with a React (Vite) frontend and Node.js serverless functions, built to deploy on **Vercel**. It uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), which supports YouTube, Instagram, TikTok, X, Facebook, Vimeo, Reddit and 1000+ other sites.
 
-## How it works
-```
-Browser ──POST /api/info──▶ Vercel function ──yt-dlp──▶ metadata + formats
-Browser ──GET /api/download──▶ Vercel function ──yt-dlp resolves URL──▶ streams file ▶ browser
-```
-- No storage, queue or ffmpeg is needed, so it fits Vercel's serverless model.
-- The file is streamed through the function, so CDN URLs locked to the requesting IP still work. Range requests are supported, so downloads can resume.
-- The yt-dlp standalone Linux binary is downloaded during the Vercel build (`scripts/fetch-ytdlp.js`) and bundled into the functions.
+## Two backends, one frontend
+| | **Render (Full)** `server/` | **Vercel (Lite)** `api/` |
+|---|---|---|
+| Quality | Best / 4K / 1080p… (merged with ffmpeg) | Single-file formats only (YouTube ≈ 360p) |
+| Audio | MP3 / M4A conversion | Original M4A / WebM |
+| Progress | Live progress, queue, cancel (SSE) | Browser's download bar |
+| Hosting | Docker container | Serverless functions |
 
-## Deploy to Vercel
-1. Import this repo at vercel.com/new. The framework preset can stay **Other**, because `vercel.json` configures everything.
-2. Optional: add an `YTDLP_COOKIES` env var (the contents of a cookies.txt file) for login-only content or bot checks.
-3. Deploy.
+The frontend checks `/api/health` (`mode: "jobs"` or `"direct"`) and switches its download flow automatically.
+
+## Option A (recommended): everything on Render
+The Docker image builds the React app and serves it with the full API, so one service hosts everything.
+1. Push this repo to GitHub.
+2. In Render, choose **New → Blueprint**, pick this repo, and Render reads `render.yaml`. You can also choose **New → Web Service → Docker**.
+3. Optional: to work around YouTube and Instagram bot checks, add a **Secret File** named `cookies.txt`, or set the `YTDLP_COOKIES` env var.
+4. Open `https://<your-service>.onrender.com`.
+
+> Use the **Starter** plan or higher. The free plan sleeps when idle and has too little RAM for ffmpeg merges.
+
+## Option B: frontend on Vercel, backend on Render
+1. Deploy the backend to Render as in Option A.
+2. In Vercel, import the repo and add the env var `VITE_API_URL=https://<your-service>.onrender.com`, then deploy.
+3. In Render, set `CORS_ORIGIN=https://<your-app>.vercel.app`.
+
+## Option C: everything on Vercel (Lite)
+Import the repo in Vercel with no env vars. `vercel.json` sets up the `/api` functions, and the yt-dlp binary is downloaded at build time. You can optionally set `YTDLP_COOKIES`.
+
+Lite-mode limits: no merging (no ffmpeg), 300 s maximum function duration, and streamed bytes count toward Vercel bandwidth.
 
 ## Local development
-Requires Node 20+ and `pip install -U yt-dlp`.
+Requires Node 20+, `pip install -U yt-dlp`, and ffmpeg (needed for full mode).
 ```bash
 npm run install:all
+npm run dev:full
 npm run dev
 ```
-Frontend: http://localhost:5173 (proxies `/api` to http://localhost:4000)
+`npm run dev:full` runs the Render-style backend. `npm run dev` runs the Vercel-style backend. The frontend is at http://localhost:5173 in both cases.
+
+Docker:
+```bash
+docker build -t downloader .
+docker run -p 10000:10000 downloader
+```
 
 ## API
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/health` | Status and yt-dlp version |
-| POST | `/api/info` | `{ url }` → title, thumbnail, format choices |
-| GET | `/api/download?url=…&f=<formatId>` | Streams the file as an attachment |
+**Full (`server/`)**: `GET /api/health`, `POST /api/info`, `POST /api/jobs {url, choice}`, `GET /api/jobs/:id/events` (SSE), `GET /api/jobs/:id/file`, `DELETE /api/jobs/:id`
 
-## Limitations on Vercel
-- **No merging:** without ffmpeg, only single-file formats are offered (video with audio, or audio only). On YouTube that usually means 360p max for video, plus full-quality audio (M4A/WebM).
-- **Duration:** each function can run for up to 300 s (`maxDuration`). Very large files on slow links may be cut off. The Pro plan allows up to 800 s.
-- **Blocked IPs:** YouTube and Instagram often block cloud IPs ("Sign in to confirm you're not a bot"). Set `YTDLP_COOKIES` to work around this.
-- **Bandwidth:** streamed bytes count toward Vercel's Fast Data Transfer usage.
+**Lite (`api/`)**: `GET /api/health`, `POST /api/info`, `GET /api/download?url=…&f=<formatId>`
 
-For 1080p or 4K merging and MP3 conversion, host the backend on a container platform with ffmpeg (Render, Railway, Fly.io) and point the frontend at it with `VITE_API_URL`.
+## Notes
+- YouTube and Instagram often block cloud IPs. Cookies or a residential proxy help.
+- Keep yt-dlp updated, since sites change often. Redeploy on Render to pull the latest yt-dlp.
 
 ## Disclaimer
 For personal use with content you own or have permission to download. Respect each platform's terms of service and copyright law.
