@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import UrlForm from './components/UrlForm.jsx';
 import MediaCard from './components/MediaCard.jsx';
-import JobList from './components/JobList.jsx';
 
 const PLATFORMS = ['YouTube', 'Instagram', 'TikTok', 'X / Twitter', 'Facebook', 'Vimeo', 'Reddit', 'SoundCloud', '1000+ more'];
 
@@ -11,7 +10,7 @@ export default function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [jobs, setJobs] = useState([]);
+  const [toast, setToast] = useState('');
   const [server, setServer] = useState(null);
 
   useEffect(() => {
@@ -32,18 +31,17 @@ export default function App() {
     }
   }
 
-  async function download(choice) {
-    setError('');
-    try {
-      const job = await api.createJob({ url, choice: choice.id, title: `${info.title} · ${choice.label}` });
-      setJobs((j) => [{ ...job, thumbnail: info.thumbnail }, ...j]);
-    } catch (e) {
-      setError(e.message);
-    }
+  function download(choice) {
+    // Browser handles the download natively (with its own progress UI)
+    const a = document.createElement('a');
+    a.href = api.downloadUrl(url, choice.id);
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setToast(`Preparing ${choice.label}… your download will start shortly.`);
+    setTimeout(() => setToast(''), 5000);
   }
-
-  const updateJob = (id, patch) => setJobs((list) => list.map((j) => (j.id === id ? { ...j, ...patch } : j)));
-  const removeJob = (id) => setJobs((list) => list.filter((j) => j.id !== id));
 
   return (
     <div className="app">
@@ -81,7 +79,7 @@ export default function App() {
         {loading && <div className="card skeleton" aria-busy="true" />}
         {info && <MediaCard info={info} onDownload={download} />}
 
-        <JobList jobs={jobs} onUpdate={updateJob} onRemove={removeJob} />
+        {toast && <div className="toast" role="status">{toast}</div>}
       </main>
 
       <footer className="footer">

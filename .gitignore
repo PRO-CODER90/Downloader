@@ -3,3 +3,5 @@ dist/
 .env
 server/downloads/
 *.log
+bin/
+.vercel

@@ -24,12 +24,13 @@ export default function MediaCard({ info, onDownload }) {
           ))}
         </div>
 
+        {!choices.length && <p className="empty">No direct {tab} formats available for this link.</p>}
         <div className="formats">
           {choices.map((c) => (
             <button key={c.id} className="format" onClick={() => onDownload(c)}>
               <strong>{c.label}</strong>
               <span>
-                {c.ext.toUpperCase()}
+                {c.ext?.toUpperCase()}
                 {c.size ? ` · ~${formatBytes(c.size)}` : ''}
               </span>
             </button>

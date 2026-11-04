@@ -1,49 +1,43 @@
 # Downloader
 
-A video and audio downloader with a React (Vite) frontend and a Node.js (Express) backend. It uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), which supports YouTube, Instagram, TikTok, X, Facebook, Vimeo, Reddit and 1000+ other sites.
+A video and audio downloader with a React (Vite) frontend and Node.js serverless functions, built to deploy on **Vercel**. It uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), which supports YouTube, Instagram, TikTok, X, Facebook, Vimeo, Reddit and 1000+ other sites.
 
-## Features
-- Paste a link to see the title, thumbnail and duration, then pick a quality
-- Video (best, 2160p … 144p, MP4) or audio only (MP3 / M4A)
-- Download queue with live progress (speed, ETA) over Server-Sent Events
-- Cancel downloads; finished files are deleted automatically after a TTL
-- Rate limiting, Helmet, URL validation, basic SSRF guard, no shell execution
-- Responsive UI with automatic light/dark mode
+## How it works
+```
+Browser ──POST /api/info──▶ Vercel function ──yt-dlp──▶ metadata + formats
+Browser ──GET /api/download──▶ Vercel function ──yt-dlp resolves URL──▶ streams file ▶ browser
+```
+- No storage, queue or ffmpeg is needed, so it fits Vercel's serverless model.
+- The file is streamed through the function, so CDN URLs locked to the requesting IP still work. Range requests are supported, so downloads can resume.
+- The yt-dlp standalone Linux binary is downloaded during the Vercel build (`scripts/fetch-ytdlp.js`) and bundled into the functions.
 
-## Requirements
-- Node.js 20+
-- yt-dlp: `pip install -U yt-dlp` (keep it updated, since sites change often)
-- ffmpeg, for merging video and audio and converting to MP3
+## Deploy to Vercel
+1. Import this repo at vercel.com/new. The framework preset can stay **Other**, because `vercel.json` configures everything.
+2. Optional: add an `YTDLP_COOKIES` env var (the contents of a cookies.txt file) for login-only content or bot checks.
+3. Deploy.
 
-## Setup
+## Local development
+Requires Node 20+ and `pip install -U yt-dlp`.
 ```bash
-npm install
 npm run install:all
-cp server/.env.example server/.env
 npm run dev
 ```
-Frontend: http://localhost:5173 · API: http://localhost:4000
-
-## Production
-```bash
-npm run build
-npm start
-```
-The Express server serves the built React app from `client/dist`.
+Frontend: http://localhost:5173 (proxies `/api` to http://localhost:4000)
 
 ## API
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Server status and yt-dlp version |
-| POST | `/api/info` | `{ url }` → metadata and format choices |
-| POST | `/api/jobs` | `{ url, choice }` → creates a download job |
-| GET | `/api/jobs/:id/events` | SSE progress stream |
-| GET | `/api/jobs/:id/file` | Download the finished file |
-| DELETE | `/api/jobs/:id` | Cancel a job |
+| GET | `/api/health` | Status and yt-dlp version |
+| POST | `/api/info` | `{ url }` → title, thumbnail, format choices |
+| GET | `/api/download?url=…&f=<formatId>` | Streams the file as an attachment |
 
-## Notes
-- Private or login-only content: set `COOKIES_FILE` to a Netscape `cookies.txt`.
-- Many hosts block datacenter IPs on YouTube and Instagram, so a residential proxy may be needed.
+## Limitations on Vercel
+- **No merging:** without ffmpeg, only single-file formats are offered (video with audio, or audio only). On YouTube that usually means 360p max for video, plus full-quality audio (M4A/WebM).
+- **Duration:** each function can run for up to 300 s (`maxDuration`). Very large files on slow links may be cut off. The Pro plan allows up to 800 s.
+- **Blocked IPs:** YouTube and Instagram often block cloud IPs ("Sign in to confirm you're not a bot"). Set `YTDLP_COOKIES` to work around this.
+- **Bandwidth:** streamed bytes count toward Vercel's Fast Data Transfer usage.
+
+For 1080p or 4K merging and MP3 conversion, host the backend on a container platform with ffmpeg (Render, Railway, Fly.io) and point the frontend at it with `VITE_API_URL`.
 
 ## Disclaimer
 For personal use with content you own or have permission to download. Respect each platform's terms of service and copyright law.

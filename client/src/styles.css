@@ -150,3 +150,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .url-form button { flex: 1; }
   .job img { display: none; }
 }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
+  background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: 12px; font-size: 14px;
+  box-shadow: var(--shadow); animation: rise 0.2s ease-out;
+}
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+.empty { color: var(--muted); font-size: 14px; }
