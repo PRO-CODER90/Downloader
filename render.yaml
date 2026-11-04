@@ -12,7 +12,11 @@ services:
         value: "3"
       - key: FILE_TTL_MINUTES
         value: "30"
-      # Set to your Vercel URL if the frontend is hosted there (comma-separated). Empty = allow all.
+      - key: MAX_FILESIZE
+        value: "2G"
+      - key: MAX_JOBS_PER_IP
+        value: "3"
+      # Only needed if the frontend is on another domain (e.g. Vercel). Empty = same-origin only.
       - key: CORS_ORIGIN
         sync: false
       # Optional: contents of cookies.txt (or upload a Secret File named cookies.txt instead)

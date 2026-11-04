@@ -22,4 +22,4 @@ http
       res.end();
     }
   })
-  .listen(port, () => console.log(`API dev server on http://localhost:${port}`));
+  .listen(port, '127.0.0.1', () => console.log(`API dev server on http://localhost:${port}`));

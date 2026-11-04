@@ -55,5 +55,15 @@ docker run -p 10000:10000 downloader
 - YouTube and Instagram often block cloud IPs. Cookies or a residential proxy help.
 - Keep yt-dlp updated, since sites change often. Redeploy on Render to pull the latest yt-dlp.
 
+## Security
+- **No secrets in the frontend.** The only frontend variable is `VITE_API_URL`, a public URL. Cookies (`YTDLP_COOKIES`) stay server-side and are written to disk with `0600` permissions.
+- **SSRF protection** (`ssrf.js`): only http(s) on ports 80 and 443 is allowed, and URLs containing credentials are rejected. Every resolved IP must be public, so loopback, private, link-local, cloud metadata, CGNAT and IPv4-mapped addresses are blocked. Every redirect hop is re-checked during streaming.
+- **Generic extractor off by default:** only known sites (YouTube, Instagram, TikTok…) are allowed. `ALLOW_GENERIC_EXTRACTOR=true` enables arbitrary sites, which carries more risk.
+- **No shell:** yt-dlp is spawned with an argument array, URLs come after `--`, and format choices are allow-listed.
+- **Abuse limits (Render):** rate limits of 60 req/min per IP and 20 jobs per 10 min, at most 3 simultaneous jobs per IP, a queue cap, a 2 GB maximum file size, a 30-minute job timeout, and automatic file cleanup.
+- **Headers:** a strict CSP, `frame-ancestors 'none'`, `nosniff` and HSTS (Vercel). CORS is same-origin only unless `CORS_ORIGIN` is set.
+- **Supply chain:** the yt-dlp binary is verified against the release's SHA-256 checksums on Vercel. You can pin a version with `YTDLP_VERSION`. The Docker image runs as a non-root user, and `npm audit` reports 0 vulnerabilities.
+- **Vercel rate limiting:** serverless functions don't share memory, so add a rate-limit rule in **Vercel → Firewall** (for example, 30 requests per minute per IP on `/api/*`).
+
 ## Disclaimer
 For personal use with content you own or have permission to download. Respect each platform's terms of service and copyright law.

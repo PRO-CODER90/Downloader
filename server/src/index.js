@@ -5,30 +5,37 @@ import rateLimit from 'express-rate-limit';
 import fs from 'node:fs';
 import { config } from './config.js';
 import { getInfo, version, VALID_CHOICE } from './ytdlp.js';
-import { createJob, getJob, cancelJob, publicView, shutdown } from './jobs.js';
+import { safeUrl } from './ssrf.js';
+import { createJob, getJob, cancelJob, publicView, shutdown, canAccept } from './jobs.js';
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false }));
-app.use(cors({ origin: config.corsOrigin }));
+app.disable('x-powered-by');
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'https:'], // remote video thumbnails
+        connectSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  }),
+);
+// Same-origin only unless CORS_ORIGIN lists allowed frontends (e.g. a Vercel domain)
+if (config.corsOrigin.length) app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json({ limit: '10kb' }));
 
-const apiLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false });
+const jobLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
 app.use('/api/', apiLimiter);
-
-function parseUrl(input) {
-  if (typeof input !== 'string' || input.length > 2048) return null;
-  try {
-    const u = new URL(input.trim());
-    if (!['http:', 'https:'].includes(u.protocol)) return null;
-    // Block obvious internal targets (basic SSRF guard)
-    if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[::1\])/i.test(u.hostname)) return null;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(u.hostname)) return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
-}
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -39,7 +46,7 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.post('/api/info', async (req, res) => {
-  const url = parseUrl(req.body?.url);
+  const url = await safeUrl(req.body?.url);
   if (!url) return res.status(400).json({ error: 'Please enter a valid http(s) URL' });
   try {
     res.json(await getInfo(url));
@@ -48,13 +55,15 @@ app.post('/api/info', async (req, res) => {
   }
 });
 
-app.post('/api/jobs', (req, res) => {
-  const url = parseUrl(req.body?.url);
+app.post('/api/jobs', jobLimiter, async (req, res) => {
+  const url = await safeUrl(req.body?.url);
   const choice = req.body?.choice || 'best';
   if (!url) return res.status(400).json({ error: 'Please enter a valid http(s) URL' });
   if (!VALID_CHOICE.test(choice)) return res.status(400).json({ error: 'Invalid format choice' });
   const title = typeof req.body?.title === 'string' ? req.body.title.slice(0, 200) : null;
-  res.status(201).json(createJob({ url, choice, title }));
+  const reason = canAccept(req.ip);
+  if (reason) return res.status(429).json({ error: reason });
+  res.status(201).json(createJob({ url, choice, title, ip: req.ip }));
 });
 
 app.get('/api/jobs/:id', (req, res) => {

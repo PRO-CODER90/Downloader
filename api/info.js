@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   } catch {
     return send(res, 400, { error: 'Invalid JSON body' });
   }
-  const url = parseUrl(body?.url);
+  const url = await parseUrl(body?.url);
   if (!url) return send(res, 400, { error: 'Please enter a valid http(s) URL' });
   try {
     send(res, 200, await getInfo(url));

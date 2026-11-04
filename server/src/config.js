@@ -9,7 +9,7 @@ function resolveCookies() {
   if (fs.existsSync('/etc/secrets/cookies.txt')) return '/etc/secrets/cookies.txt'; // Render secret file
   if (process.env.YTDLP_COOKIES) {
     const p = path.join(os.tmpdir(), 'yt-dlp-cookies.txt');
-    fs.writeFileSync(p, process.env.YTDLP_COOKIES.replace(/\\n/g, '\n'));
+    fs.writeFileSync(p, process.env.YTDLP_COOKIES.replace(/\\n/g, '\n'), { mode: 0o600 });
     return p;
   }
   return '';
@@ -20,7 +20,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const config = {
   port: Number(process.env.PORT) || 4000,
   ytdlp: process.env.YTDLP_PATH || 'yt-dlp',
-  corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()) : true,
+  corsOrigin: (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
+  maxQueue: Number(process.env.MAX_QUEUE) || 20,
+  maxJobsPerIp: Number(process.env.MAX_JOBS_PER_IP) || 3,
+  maxFilesize: process.env.MAX_FILESIZE || '2G',
+  jobTimeoutMs: (Number(process.env.JOB_TIMEOUT_MINUTES) || 30) * 60_000,
+  allowGeneric: process.env.ALLOW_GENERIC_EXTRACTOR === 'true',
   maxJobs: Number(process.env.MAX_CONCURRENT_JOBS) || 3,
   fileTtlMs: (Number(process.env.FILE_TTL_MINUTES) || 30) * 60_000,
   cookiesFile: resolveCookies(),

@@ -2,6 +2,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseUrl, resolveFormat, VALID_FORMAT } from '../lib/ytdlp.js';
 import { send, query } from '../lib/http.js';
+import { safeFetch } from '../lib/ssrf.js';
 
 const PASS_HEADERS = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag'];
 
@@ -16,7 +17,7 @@ function safeName(title, ext) {
  */
 export default async function handler(req, res) {
   const q = query(req);
-  const url = parseUrl(q.url);
+  const url = await parseUrl(q.url);
   const format = q.f || 'b';
   if (!url) return send(res, 400, { error: 'Invalid URL' });
   if (!VALID_FORMAT.test(format)) return send(res, 400, { error: 'Invalid format' });
@@ -36,9 +37,9 @@ export default async function handler(req, res) {
 
   let upstream;
   try {
-    upstream = await fetch(media.url, { headers, redirect: 'follow', signal: ac.signal });
+    upstream = await safeFetch(media.url, { headers, signal: ac.signal });
   } catch (e) {
-    return send(res, 502, { error: `Upstream request failed: ${e.message}` });
+    return send(res, 502, { error: 'Could not reach the media server' });
   }
   if (!upstream.ok || !upstream.body) return send(res, 502, { error: `Upstream responded with ${upstream.status}` });
 
@@ -51,6 +52,7 @@ export default async function handler(req, res) {
   const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");
   res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`);
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
   try {
     await pipeline(Readable.fromWeb(upstream.body), res);

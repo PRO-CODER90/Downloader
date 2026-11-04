@@ -3,6 +3,7 @@ import { config } from './config.js';
 
 const baseArgs = () => {
   const args = ['--no-playlist', '--no-warnings', '--ignore-config'];
+  if (!config.allowGeneric) args.push('--use-extractors', 'default,-generic');
   if (config.cookiesFile) args.push('--cookies', config.cookiesFile);
   return args;
 };
@@ -46,7 +47,7 @@ export async function version() {
 
 /** Fetch metadata and build a simplified list of format choices. */
 export async function getInfo(url) {
-  const raw = JSON.parse(await run(['-J', url], { timeoutMs: 90_000 }));
+  const raw = JSON.parse(await run(['-J', '--', url], { timeoutMs: 90_000 }));
   const formats = Array.isArray(raw.formats) ? raw.formats : [];
 
   const heights = [...new Set(formats.filter((f) => f.vcodec && f.vcodec !== 'none' && f.height).map((f) => f.height))]

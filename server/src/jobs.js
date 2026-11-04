@@ -23,10 +23,20 @@ function update(job, patch) {
   job.events.emit('update', publicView(job));
 }
 
-export function createJob({ url, choice, title }) {
+/** Returns an error message if a new job should be refused, else null. */
+export function canAccept(ip) {
+  if (queue.length >= config.maxQueue) return 'Server is busy, please try again in a minute';
+  let active = 0;
+  for (const j of jobs.values()) if (j.ip === ip && ['queued', 'downloading', 'processing'].includes(j.status)) active++;
+  if (active >= config.maxJobsPerIp) return `Limit of ${config.maxJobsPerIp} simultaneous downloads reached`;
+  return null;
+}
+
+export function createJob({ url, choice, title, ip }) {
   const job = {
     id: randomUUID(),
     url,
+    ip,
     choice,
     title: title || null,
     status: 'queued',
@@ -66,11 +76,16 @@ function start(job) {
     ...formatArgs(job.choice),
     '--restrict-filenames',
     '--trim-filenames', '120',
+    '--max-filesize', config.maxFilesize,
     '-o', path.join(dir, '%(title)s.%(ext)s'),
     '--', job.url,
   ];
   const proc = spawnDownload(args);
   job.proc = proc;
+  const killTimer = setTimeout(() => {
+    job.timedOut = true;
+    proc.kill('SIGKILL');
+  }, config.jobTimeoutMs);
   let stderr = '';
   let buf = '';
 
@@ -95,6 +110,7 @@ function start(job) {
   proc.stderr.on('data', (d) => (stderr += d));
 
   const finish = (patch) => {
+    clearTimeout(killTimer);
     running--;
     job.proc = null;
     update(job, patch);
@@ -108,13 +124,17 @@ function start(job) {
 
   proc.on('close', (code) => {
     if (job.status === 'cancelled') return finish({ status: 'cancelled' });
+    if (job.timedOut) return finish({ status: 'error', error: 'Download took too long and was stopped' });
     if (code !== 0) return finish({ status: 'error', error: cleanError(stderr) || 'Download failed' });
     const file = fs
       .readdirSync(dir)
       .filter((f) => !f.endsWith('.part') && !f.endsWith('.ytdl'))
       .map((f) => ({ f, s: fs.statSync(path.join(dir, f)).size }))
       .sort((a, b) => b.s - a.s)[0];
-    if (!file) return finish({ status: 'error', error: 'Output file not found' });
+    if (!file) {
+      const tooBig = /larger than max-filesize|File is larger/i.test(stderr + buf);
+      return finish({ status: 'error', error: tooBig ? `File exceeds the ${config.maxFilesize} limit` : 'Output file not found' });
+    }
     finish({ status: 'done', progress: 100, filename: file.f, filePath: path.join(dir, file.f) });
   });
 }

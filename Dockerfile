@@ -10,9 +10,11 @@ COPY client/ ./
 RUN npm run build
 
 FROM node:22-slim
+# Pin with: docker build --build-arg YTDLP_VERSION=2026.10.26 .  (empty = latest)
+ARG YTDLP_VERSION=
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg python3 python3-pip ca-certificates \
- && pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[default]" \
+ && pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[default]${YTDLP_VERSION:+==$YTDLP_VERSION}" \
  && apt-get purge -y python3-pip && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
